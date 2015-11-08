@@ -2,8 +2,8 @@
 # user view
 #
 import sys
-sys.path.append("../..")
-from utils.entity_id_helper import EntityIdHelper
+sys.path.append("..")
+from base.entity_id_helper import EntityIdHelper
 
 
 class UserView(object):

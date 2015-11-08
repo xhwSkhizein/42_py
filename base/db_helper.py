@@ -11,10 +11,8 @@ def singleton(cls, *args, **kw):
         return instances[cls]
     return _singleton
 
-
 @singleton
 class DB42(object):
-    ''' FIXME 单例数据库连接池 '''
     def __init__(self, host='127.0.0.1', port=3306, user='root',passwd=None, db=None, pool_size=8):
         self._conn_pool = Queue.Queue()
         # 数据库连接配置
@@ -34,40 +32,54 @@ class DB42(object):
         conn_pool = self._conn_pool
         # FIXME is multi-thread safe ?
         try:
-            if conn_pool.empty():
-                for i in range(self._pool_size):
-                    _conn = MySQLdb.connect(use_unicode=True, charset='utf8', **self._config)
-                    _conn.autocommit(True)
-                    if not conn_pool.full():
-                        _conn_pool.put(_conn)
-            conn = conn_pool.get()
+            conn = self.get_conn()
             if conn:
                 if not conn_pool.full():
                     conn_pool.put(conn) # 将连接还给连接池, 没办法，不知道怎么封装到多线程环境中，。。。😢
                 return conn.cursor()
         except Exception as e:
             raise e
+    def get_conn(self):
+        conn_pool = self._conn_pool
+        try:
+            if conn_pool.empty():
+                for i in range(self._pool_size):
+                    _conn = MySQLdb.connect(use_unicode=True, charset='utf8', **self._config)
+                    _conn.autocommit(True)
+                    if not conn_pool.full():
+                        _conn_pool.put(_conn)
+            return conn_pool.get()
+        except Exception as e:
+            raise e
 
     # update
     def update(self, sql, argvs=None):
-        cursor = self.get_cursor(self)
+        """ 插入成功返回id， 否则返回None """
+        conn = self.get_conn()
+        cursor = conn.cursor()
         try:
             result_sz = cursor.execute(sql, argvs)
+            # commit后才生效
+            conn.commit()
+            self._conn_pool.put(conn)
             if result_sz > 1:
-                return cursor.fetchall()
+                return long(cursor.lastrowid)
             else:
-                return cursor.fetchone()
+                return None
         finally:
             cursor.close()
     # query
     def query(self, sql, argvs=None):
+        """ 如果查询结果为空或只有一条，返回 (False, result)
+            如果查询结果为多条，返回 (True, result)
+        """
         cursor = self.get_cursor()
         try:
             result_sz = cursor.execute(sql, argvs)
             if result_sz > 1:
-                return cursor.fetchall()
+                return (True, cursor.fetchall())
             else:
-                return cursor.fetchone()
+                return (False, cursor.fetchone())
         finally:
             cursor.close()
     # 关闭所有连接

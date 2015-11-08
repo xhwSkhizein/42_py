@@ -27,3 +27,13 @@ create table user_passport (
     primary key (id),
     unique key uniq_number(account)
 ) Engine=InnoDB;
+
+-- 票
+-- create_time 会用作salt
+create table ticket (
+    id bigint unsigned not null auto_increment,
+    user_id integer unsigned not null,
+    create_time bigint unsigned not null,
+    primary key (id),
+    unique key uniq_userid(user_id)
+) Engine=InnoDB;

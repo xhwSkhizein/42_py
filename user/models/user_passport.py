@@ -3,8 +3,8 @@
 import json
 from datetime import datetime
 import sys
-sys.path.append("../..")
-from utils.db_helper import DB42
+sys.path.append("..")
+from base.db_helper import DB42
 
 class UserPassport(object):
     def __init__(self, id, account, password, status, update_time, create_time):
@@ -23,8 +23,8 @@ class PassportDAO(object):
         # TODO deal with callback way
         result = self._db.query("select * from user_passport where account = %s and password = %s", params)
         # TODO transfer (1L, u'mary', u'123asd', 0L, 20151108032450L, datetime.datetime(2015, 11, 8, 3, 24, 50)) to model
-        query_result = result[1]
-        return UserPassport(query_result[0],query_result[1],query_result[2],query_result[3],query_result[4],query_result[5])
+        if result[1]:
+            return UserPassport(result[1][0],result[1][1],result[1][2],result[1][3],result[1][4],result[1][5])
 
     def InsertOrUpdate(self, account, password, status):
         params = [username, data, status]
