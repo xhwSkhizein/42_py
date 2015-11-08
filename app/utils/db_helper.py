@@ -1,109 +1,94 @@
 #! -*- coding:utf8 -*-
 
 import MySQLdb
-import threading
 import Queue
-import tornado.ioloop
-from tornado import gen
-from tornado.log import gen_log
-from functools import partial
 
+def singleton(cls, *args, **kw):
+    instances = {}
+    def _singleton(*args):
+        if cls not in instances:
+            instances[cls] = cls(*args, **kw)
+        return instances[cls]
+    return _singleton
+
+
+@singleton
 class DB42(object):
-    def __init__(self, host='127.0.0.1', port='3306', #
-                    user=None, passwd=None, dbname=None, #
-                    pool_size=8, ioloop=None):
-        self._threads = [] # 线程池
-        self._working = True
-        self._tasks = Queue.Queue() # 正在执行的任务队列
-        self.ioloop = ioloop
+    ''' FIXME 单例数据库连接池 '''
+    def __init__(self, host='127.0.0.1', port=3306, user='root',passwd=None, db=None, pool_size=8):
+        self._conn_pool = Queue.Queue()
         # 数据库连接配置
         self._config = cn = {}
         cn['host'] = host
         cn['port'] = port
-        if user: cn['user'] = user
-        if passwd: cn['passwd'] = passwd
-        if dbname: cn['db'] = dbname
-        # create threads
-        for i in xrange(pool_size):
-            t = Worker(self)
-            t.start()
-            self._threads.append(t)
-    def do_inner_update(self, sql, argvs=None, callback=None):
-        assert callback
-        # 标准task是一个list，第一项是执行的任务类型，
-        # 第二项是执行的sql语句，点三项是sql语句参数，第四项是执行后的回调方法
-        self._tasks.put(['query', sql, argvs, callback])
-    def do_inner_query(self, sql, argvs=None, callback=None):
-        assert callback
-        gen_log.info("存入tasks，command={0},sql={1}, argvs={2}",['query', sql, argvs])
-        self._tasks.put(['query', sql, argvs, callback])
-    # 创建update
-    def update(self, sql, argvs=None):
-        return gen.Task(self.do_inner_update, sql, argvs)
-    # 创建query
-    def query(self, sql, argvs=None):
-        return gen.Task(self.do_inner_query, sql, argvs)
-    # 将结果返回
-    def send_result(self, task, result, error):
-        callback = partial(task[3], (result, error))
-        ioloop = self.ioloop or tornado.ioloop.IOLoop.instance()
-        ioloop.add_callback(callback)
-    def stop(self):
-        self._working = False
-        self._tasks.put(['stop'])
-        map(lambda t: t.join(), self._threads)
+        cn['user'] = user
+        cn['passwd'] = passwd
+        cn['db'] = db
+        self._pool_size = pool_size
+        for i in range(self._pool_size):
+            _conn = MySQLdb.connect(use_unicode=True, charset='utf8', host='127.0.0.1',port=3306,user='root',passwd='qweasd',db=db)
+            _conn.autocommit(True)
+            self._conn_pool.put(_conn)
 
-
-
-class Worker(threading.Thread):
-    def __init__(self, ctx):
-        self._conn = None
-        self._ctx = ctx
-        super(Worker, self).__init__()
     def get_cursor(self):
-        # FIXME 判断连接时间是否需要重新连接,不需要的话直接返回
-        if self._conn and self._conn.open:
-            self._conn.close()
-        self._conn = MySQLdb.connect(
-                    use_unicode=True, charset='utf8', **self._ctx._config)
-        self._conn.autocommit(True)
-        return self._conn.cursor()
-    def close_conn(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
-    def run(self):
-        ctx = self._ctx
-        while ctx._working:
-            result = None
-            error = None
-            cursor = None
-            try:
-                task = ctx._tasks.get(True) # 如果取不到就阻塞 FIXME 可以适当扩容
-                command_type = task[0]
-                gen_log.info("command={0}",[command_type])
-                if command_type == 'stop':
-                    # 没有任务返回
-                    break
-                sql = task[1]
-                argvs = task[2] or []
-                cursor = self.get_cursor()
-                if command_type == 'query':
-                    cursor.execute(sql, argvs)
-                    result = cursor.fetchall()
-                else:
-                    cursor.execute(sql, argvs)
-            except Exception as e:
-                error = e
-            finally:
-                if cursor: cursor.close()
-            gen_log.info("执行完毕，返回，command={0},sql={1}, argvs={2}",[command_type, sql, argvs])
-            ctx.send_result(task, result, error)
-        gen_log.info("准备关闭所有持有的连接...")
-        print "准备关闭所有持有的连接..."
-        # 关闭时关闭持有的连接
-        self.close_conn()
+        conn_pool = self._conn_pool
+        # FIXME is multi-thread safe ?
+        try:
+            if conn_pool.empty():
+                for i in range(self._pool_size):
+                    _conn = MySQLdb.connect(use_unicode=True, charset='utf8', **self._config)
+                    _conn.autocommit(True)
+                    if not conn_pool.full():
+                        _conn_pool.put(_conn)
+            conn = conn_pool.get()
+            if conn:
+                if not conn_pool.full():
+                    conn_pool.put(conn) # 将连接还给连接池, 没办法，不知道怎么封装到多线程环境中，。。。😢
+                return conn.cursor()
+        except Exception as e:
+            raise e
+
+    # update
+    def update(self, sql, argvs=None):
+        cursor = self.get_cursor(self)
+        try:
+            result_sz = cursor.execute(sql, argvs)
+            if result_sz > 1:
+                return cursor.fetchall()
+            else:
+                return cursor.fetchone()
+        finally:
+            cursor.close()
+    # query
+    def query(self, sql, argvs=None):
+        cursor = self.get_cursor()
+        try:
+            result_sz = cursor.execute(sql, argvs)
+            if result_sz > 1:
+                return cursor.fetchall()
+            else:
+                return cursor.fetchone()
+        finally:
+            cursor.close()
+    # 关闭所有连接
+    def stop(self):
+        conn_pool = self._conn_pool
+        while not conn_pool.empty():
+            conn = conn_pool.get()
+            conn.close()
 
 
-if '__main__' == __name__:
-    pass
+if __name__ == '__main__':
+    db1 = DB42('127.0.0.1',3306,'root','qweasd','user')
+    db2 = DB42('127.0.0.1',3306,'root','qweasd','test')# FIXME
+    print id(db1)
+    print id(db2)
+    print db1 == db2
+    print db1 is db2
+    cur = db1.get_cursor()
+    cur.execute("select * from user_passport")
+    print cur.fetchall()
+    cur.execute('show tables')
+    print cur.fetchall()
+    cur.close()
+    db1.stop()
