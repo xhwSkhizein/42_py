@@ -3,10 +3,13 @@
 import tornado.web
 #from user.models.user import UserDAO
 import tornado.ioloop
+import simplejson
 import sys
 sys.path.append("..")
 from utils.db_helper import DB42
 from models.user_passport import PassportDAO
+from models.user import UserDAO
+from views.user_view import UserView
 
 class AuthHandler(tornado.web.RequestHandler):
     '''
@@ -17,20 +20,17 @@ class AuthHandler(tornado.web.RequestHandler):
     # ParamField  : account, password
     '''
     # def post(self):
-    #     account = self.get_body_argument("account")
-    #     password = self.get_body_argument("password")
-    #     t = authenticate(account, password)
-    #     self.write(t);
-
     def get(self):
         account = self.get_query_argument("account")
         password = self.get_query_argument("password")
         # t = authenticate(account, password)
-        #def authenticate(account, password):
         user_passport = PassportDAO().GetByAccountPassword(account, password)
         if user_passport:
-            # TODO get user info and return json format result
-            self.write(str(user_passport._id))
+            ids=[]
+            ids.append(user_passport._id)
+            users = UserDAO().GetByIds(ids)
+            if users and len(users) > 0:
+                self.write(map(lambda x : UserView(x).to_json(),users)[0])
         else:
             self.write("401, authentication failure!")
 

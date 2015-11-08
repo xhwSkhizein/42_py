@@ -1,5 +1,7 @@
 #! -*- coding:utf8 -*-
 # 登陆信息
+import json
+from datetime import datetime
 import sys
 sys.path.append("../..")
 from utils.db_helper import DB42
@@ -14,21 +16,18 @@ class UserPassport(object):
         self._create_time = create_time
 
 class PassportDAO(object):
-    global _db
-    _db = DB42('127.0.0.1', 3306, 'root', 'qweasd', 'user', 8)
+    def __init__(self):
+        self._db = DB42('127.0.0.1', 3306, 'root', 'qweasd', 'user', 8)
     def  GetByAccountPassword(self, account, password):
         params = [account, password]
-        def get_by_account_password(params):
-            result = _db.query("select * from user_passport where account = %s and password = %s", params)
-            # TODO transfer (1L, u'mary', u'123asd', 0L, 20151108032450L, datetime.datetime(2015, 11, 8, 3, 24, 50)) to model
-            up = UserPassport(result[0],result[1],result[2],result[3],result[4],result[5])
-            return up
-        return get_by_account_password(params)
+        # TODO deal with callback way
+        result = self._db.query("select * from user_passport where account = %s and password = %s", params)
+        # TODO transfer (1L, u'mary', u'123asd', 0L, 20151108032450L, datetime.datetime(2015, 11, 8, 3, 24, 50)) to model
+        query_result = result[1]
+        return UserPassport(query_result[0],query_result[1],query_result[2],query_result[3],query_result[4],query_result[5])
 
     def InsertOrUpdate(self, account, password, status):
         params = [username, data, status]
-        def insert_or_update(account, password, status):
-            result = _db.update("insert into user_passport(account, password, status, update_time, create_time) values(%s, %s, %s, now(), now())", params)
-            print result
-            return result
-        return insert_or_update(params)
+        result = self._db.update("insert into user_passport(account, password, status, update_time, create_time) values(%s, %s, %s, now(), now())", params)
+        print result
+        return result
