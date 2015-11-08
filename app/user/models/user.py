@@ -2,7 +2,7 @@
 # user model
 #
 import sys
-sys.path.append("..")
+sys.path.append("../..")
 from utils.db_helper import DB42
 
 class User:

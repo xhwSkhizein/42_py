@@ -1,7 +1,7 @@
 #! -*- coding:utf8 -*-
 # 登陆信息
 import sys
-sys.path.append("..")
+sys.path.append("../..")
 from utils.db_helper import DB42
 
 class UserPassport(object):

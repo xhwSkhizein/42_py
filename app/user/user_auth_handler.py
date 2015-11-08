@@ -6,7 +6,7 @@ import tornado.ioloop
 import sys
 sys.path.append("..")
 from utils.db_helper import DB42
-from user_passport import PassportDAO
+from models.user_passport import PassportDAO
 
 class AuthHandler(tornado.web.RequestHandler):
     '''
